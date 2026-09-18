@@ -1,0 +1,8 @@
+[package]
+name = "MDgbe"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+rfd = "0.17.2"
+sdl2 = { version = "0.38.0", features = ["bundled", "static-link"] }

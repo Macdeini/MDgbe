@@ -530,6 +530,10 @@ pub struct Cpu {
     t_states: u32,
     m_cycles: u32,
     ime: u8,
+    ei_check: u8,
+    timer_state_counter: u16,
+    halt: bool, 
+    halt_bug: bool, 
 }
 
 enum Register {
@@ -558,15 +562,19 @@ enum Flag {
 impl Cpu {
     pub fn new() -> Self {
         Cpu { 
-            af: 0x0100,
-            bc: 0xFF13,
-            de: 0x00C1,
-            hl: 0x8403,
+            af: 0x01B0,
+            bc: 0x0013,
+            de: 0x00D8,
+            hl: 0x014D,
             sp: 0xFFFE,
             pc: 0x100,
             t_states: 0,
             m_cycles: 0,
             ime: 0,
+            ei_check: 0,
+            timer_state_counter: 0,
+            halt: false,
+            halt_bug: false,
         }
     }
 
@@ -698,267 +706,340 @@ impl Cpu {
         return value; 
     }
 
-    pub fn step(&mut self, bus: &mut Bus) -> u32 {
-        let opcode = bus.read(self.pc);
-        if self.t_states >= 235000000{
-        println!("PC: {:<4x} OPCODE: {:<4x} NAME: {:<18} CYCLES: {}", self.pc, opcode, OPCODE_NAME[opcode as usize], self.t_states);
-        } 
-        self.pc += 1;
-        let t_states = match opcode {
-            0x00 => Self::NOP(), 
-            0x01 => self.LD_r16_n16(BC, bus),
-            0x02 => self.LD_a16_r8(BC, A, bus), 
-            0x03 => self.INC_r16(BC),
-            0x04 => self.INC_r8(B),
-            0x05 => self.DEC_r8(B),
-            0x06 => self.LD_r8_n8(B, bus),
-            0x07 => self.RLCA(),
-            0x08 => self.LD_a16_SP(bus),
-            0x09 => self.ADD_HL_r16(BC),
-            0x0A => self.LD_r8_a16(A, BC, bus),
-            0x0B => self.DEC_r16(BC),
-            0x0C => self.INC_r8(C),
-            0x0D => self.DEC_r8(C),
-            0x0E => self.LD_r8_n8(C, bus),
-            0x0F => self.RRCA(),
-            0x10 => self.STOP(),
-            0x11 => self.LD_r16_n16(DE, bus),
-            0x12 => self.LD_a16_r8(DE, A, bus), 
-            0x13 => self.INC_r16(DE),
-            0x14 => self.INC_r8(D),
-            0x15 => self.DEC_r8(D),
-            0x16 => self.LD_r8_n8(D, bus),
-            0x17 => self.RLA(),
-            0x18 => self.JR_e8(bus),
-            0x19 => self.ADD_HL_r16(DE),
-            0x1A => self.LD_r8_a16(A, DE, bus),
-            0x1B => self.DEC_r16(DE),
-            0x1C => self.INC_r8(E),
-            0x1D => self.DEC_r8(E),
-            0x1E => self.LD_r8_n8(E, bus),
-            0x1F => self.RRA(),
-            0x20 => self.JR_cc_e8(Flag::Z, false, bus),
-            0x21 => self.LD_r16_n16(HL, bus), 
-            0x22 => self.LD_HLI_A(bus),
-            0x23 => self.INC_r16(HL),
-            0x24 => self.INC_r8(H),
-            0x25 => self.DEC_r8(H),
-            0x26 => self.LD_r8_n8(H, bus),
-            0x27 => self.DAA(),
-            0x28 => self.JR_cc_e8(Flag::Z, true, bus),
-            0x29 => self.ADD_HL_r16(HL),
-            0x2A => self.LD_A_HLI(bus),
-            0x2B => self.DEC_r16(HL),
-            0x2C => self.INC_r8(L),
-            0x2D => self.DEC_r8(L),
-            0x2E => self.LD_r8_n8(L, bus),
-            0x2F => self.CPL(),
-            0x30 => self.JR_cc_e8(Flag::C, false, bus),
-            0x31 => self.LD_r16_n16(SP, bus),
-            0x32 => self.LD_HLD_A(bus),
-            0x33 => self.INC_r16(SP),
-            0x34 => self.INC_HL(bus),
-            0x35 => self.DEC_HL(bus),
-            0x36 => self.LD_a16_n8(HL, bus),
-            0x37 => self.SCF(),
-            0x38 => self.JR_cc_e8(Flag::C, true, bus),
-            0x39 => self.ADD_HL_r16(SP),
-            0x3A => self.LD_A_HLD(bus),
-            0x3B => self.DEC_r16(SP),
-            0x3C => self.INC_r8(A),
-            0x3D => self.DEC_r8(A),
-            0x3E => self.LD_r8_n8(A, bus),
-            0x3F => self.CCF(),
-            0x40 => self.LD_r8_r8(B, B),
-            0x41 => self.LD_r8_r8(B, C),
-            0x42 => self.LD_r8_r8(B, D),
-            0x43 => self.LD_r8_r8(B, E),
-            0x44 => self.LD_r8_r8(B, H),
-            0x45 => self.LD_r8_r8(B, L),
-            0x46 => self.LD_r8_a16(B, HL, bus),
-            0x47 => self.LD_r8_r8(B, A),
-            0x48 => self.LD_r8_r8(C, B),
-            0x49 => self.LD_r8_r8(C, C),
-            0x4A => self.LD_r8_r8(C, D),
-            0x4B => self.LD_r8_r8(C, E),
-            0x4C => self.LD_r8_r8(C, H),
-            0x4D => self.LD_r8_r8(C, L),
-            0x4E => self.LD_r8_a16(C, HL, bus),
-            0x4F => self.LD_r8_r8(C, A),
-            0x50 => self.LD_r8_r8(D, B),
-            0x51 => self.LD_r8_r8(D, C),
-            0x52 => self.LD_r8_r8(D, D),
-            0x53 => self.LD_r8_r8(D, E),
-            0x54 => self.LD_r8_r8(D, H),
-            0x55 => self.LD_r8_r8(D, L),
-            0x56 => self.LD_r8_a16(D, HL, bus),
-            0x57 => self.LD_r8_r8(D, A),
-            0x58 => self.LD_r8_r8(E, B),
-            0x59 => self.LD_r8_r8(E, C),
-            0x5A => self.LD_r8_r8(E, D),
-            0x5B => self.LD_r8_r8(E, E),
-            0x5C => self.LD_r8_r8(E, H),
-            0x5D => self.LD_r8_r8(E, L),
-            0x5E => self.LD_r8_a16(E, HL, bus),
-            0x5F => self.LD_r8_r8(E, A),
-            0x60 => self.LD_r8_r8(H, B),
-            0x61 => self.LD_r8_r8(H, C),
-            0x62 => self.LD_r8_r8(H, D),
-            0x63 => self.LD_r8_r8(H, E),
-            0x64 => self.LD_r8_r8(H, H),
-            0x65 => self.LD_r8_r8(H, L),
-            0x66 => self.LD_r8_a16(H, HL, bus),
-            0x67 => self.LD_r8_r8(H, A),
-            0x68 => self.LD_r8_r8(L, B),
-            0x69 => self.LD_r8_r8(L, C),
-            0x6A => self.LD_r8_r8(L, D),
-            0x6B => self.LD_r8_r8(L, E),
-            0x6C => self.LD_r8_r8(L, H),
-            0x6D => self.LD_r8_r8(L, L),
-            0x6E => self.LD_r8_a16(L, HL, bus),
-            0x6F => self.LD_r8_r8(L, A),
-            0x70 => self.LD_a16_r8(HL, B, bus),
-            0x71 => self.LD_a16_r8(HL, C, bus), 
-            0x72 => self.LD_a16_r8(HL, D, bus),
-            0x73 => self.LD_a16_r8(HL, E, bus),
-            0x74 => self.LD_a16_r8(HL, H, bus),
-            0x75 => self.LD_a16_r8(HL, L, bus),
-            0x77 => self.LD_a16_r8(HL, A, bus),
-            0x78 => self.LD_r8_r8(A, B),
-            0x79 => self.LD_r8_r8(A, C),
-            0x7A => self.LD_r8_r8(A, D),
-            0x7B => self.LD_r8_r8(A, E),
-            0x7C => self.LD_r8_r8(A, H),
-            0x7D => self.LD_r8_r8(A, L),
-            0x7E => self.LD_r8_a16(A, HL, bus),
-            0x7F => self.LD_r8_r8(A, A),
-            0x80 => self.ADD_A_r8(B),
-            0x81 => self.ADD_A_r8(C),
-            0x82 => self.ADD_A_r8(D),
-            0x83 => self.ADD_A_r8(E),
-            0x84 => self.ADD_A_r8(H),
-            0x85 => self.ADD_A_r8(L),
-            0x86 => self.ADD_A_HL(bus),
-            0x87 => self.ADD_A_r8(A),
-            0x88 => self.ADC_A_r8(B),
-            0x89 => self.ADC_A_r8(C),
-            0x8A => self.ADC_A_r8(D),
-            0x8B => self.ADC_A_r8(E),
-            0x8C => self.ADC_A_r8(H),
-            0x8D => self.ADC_A_r8(L),
-            0x8E => self.ADC_A_HL(bus),
-            0x8F => self.ADC_A_r8(A),
-            0x90 => self.SUB_A_r8(B),
-            0x91 => self.SUB_A_r8(C),
-            0x92 => self.SUB_A_r8(D),
-            0x93 => self.SUB_A_r8(E),
-            0x94 => self.SUB_A_r8(H),
-            0x95 => self.SUB_A_r8(L),
-            0x96 => self.SUB_A_HL(bus),
-            0x97 => self.SUB_A_r8(A),
-            0x98 => self.SBC_A_r8(B),
-            0x99 => self.SBC_A_r8(C),
-            0x9A => self.SBC_A_r8(D),
-            0x9B => self.SBC_A_r8(E),
-            0x9C => self.SBC_A_r8(H),
-            0x9D => self.SBC_A_r8(L),
-            0x9E => self.SBC_A_HL(bus),
-            0x9F => self.SBC_A_r8(A),
-            0xA0 => self.AND_A_r8(B),
-            0xA1 => self.AND_A_r8(C),
-            0xA2 => self.AND_A_r8(D),
-            0xA3 => self.AND_A_r8(E),
-            0xA4 => self.AND_A_r8(H),
-            0xA5 => self.AND_A_r8(L),
-            0xA6 => self.AND_A_HL(bus),
-            0xA7 => self.AND_A_r8(A),
-            0xA8 => self.XOR_A_r8(B),
-            0xA9 => self.XOR_A_r8(C),
-            0xAA => self.XOR_A_r8(D),
-            0xAB => self.XOR_A_r8(E),
-            0xAC => self.XOR_A_r8(H),
-            0xAD => self.XOR_A_r8(L),
-            0xAE => self.XOR_A_HL(bus),
-            0xAF => self.XOR_A_r8(A),
-            0xB0 => self.OR_A_r8(B),
-            0xB1 => self.OR_A_r8(C),
-            0xB2 => self.OR_A_r8(D),
-            0xB3 => self.OR_A_r8(E),
-            0xB4 => self.OR_A_r8(H),
-            0xB5 => self.OR_A_r8(L),
-            0xB6 => self.OR_A_HL(bus),
-            0xB7 => self.OR_A_r8(A),
-            0xB8 => self.CP_A_r8(B),
-            0xB9 => self.CP_A_r8(C),
-            0xBA => self.CP_A_r8(D),
-            0xBB => self.CP_A_r8(E),
-            0xBC => self.CP_A_r8(H),
-            0xBD => self.CP_A_r8(L),
-            0xBE => self.CP_A_HL(bus),
-            0xBF => self.CP_A_r8(A),
-            0xC0 => self.RET_cc(Flag::Z, false, bus),
-            0xC1 => self.POP_r16(BC, bus),
-            0xC2 => self.JP_cc(Flag::Z, false, bus),
-            0xC3 => self.JP_n16(bus),
-            0xC4 => self.CALL_cc_n16(Flag::Z, false, bus),
-            0xC5 => self.PUSH_r16(BC, bus),
-            0xC6 => self.ADD_A_n8(bus),
-            0xC7 => self.RST(0x00, bus),
-            0xC8 => self.RET_cc(Flag::Z, true, bus),
-            0xC9 => self.RET(bus),
-            0xCA => self.JP_cc(Flag::Z, true, bus),
-            0xCB => self.prefix(bus),
-            0xCC => self.CALL_cc_n16(Flag::Z, true, bus),
-            0xCD => self.CALL_n16(bus),
-            0xCE => self.ADC_A_n8(bus),
-            0xCF => self.RST(0x08, bus),
-            0xD0 => self.RET_cc(Flag::C, false, bus),
-            0xD1 => self.POP_r16(DE, bus),
-            0xD2 => self.JP_cc(Flag::C, false, bus),
-            0xD4 => self.CALL_cc_n16(Flag::C, false, bus),
-            0xD5 => self.PUSH_r16(DE, bus),
-            0xD6 => self.SUB_A_n8(bus),
-            0xD7 => self.RST(0x10, bus),
-            0xD8 => self.RET_cc(Flag::C, true, bus),
-            0xD9 => self.RETI(bus),
-            0xDA => self.JP_cc(Flag::C, true, bus),
-            0xDC => self.CALL_cc_n16(Flag::C, true, bus),
-            0xDE => self.SBC_A_n8(bus),
-            0xDF => self.RST(0x18, bus),
-            0xE0 => self.LDH_n16_A(bus),
-            0xE1 => self.POP_r16(HL, bus),
-            0xE2 => self.LDH_C_A(bus),
-            0xE5 => self.PUSH_r16(HL, bus),
-            0xE6 => self.AND_A_n8(bus),
-            0xE7 => self.RST(0x20, bus),
-            0xE8 => self.ADD_SP_e8(bus),
-            0xE9 => self.JP_HL(),
-            0xEA => self.LD_n16_A(bus),
-            0xEE => self.XOR_A_n8(bus),
-            0xEF => self.RST(0x28, bus),
-            0xF0 => self.LDH_A_n16(bus),
-            0xF1 => self.POP_AF(bus),
-            0xF2 => self.LDH_A_C(bus),
-            0xF3 => self.DI(),
-            0xF5 => self.PUSH_AF(bus),
-            0xF6 => self.OR_A_n8(bus),
-            0xF7 => self.RST(0x30, bus),
-            0xF8 => self.LD_HL_SP_e8(bus),
-            0xF9 => self.LD_SP_HL(),
-            0xFA => self.LD_A_n16(bus),
-            0xFB => self.EI(),
-            0xFE => self.CP_A_n8(bus),
-            0xFF => self.RST(0x38, bus),
+    pub fn CALL_interrupt(&mut self, bus: &mut Bus, addr: u16) -> u32 {
+        self.sp -= 1; 
+        bus.write(self.sp, (self.pc >> 8) as u8);
+        self.sp -= 1; 
+        bus.write(self.sp, self.pc as u8);
+        self.pc = addr;
+        return 20; 
+    }
 
-            _ => panic!("UNKNOWN OPCODE: {:x}", opcode),
-        };
+    pub fn step(&mut self, bus: &mut Bus) -> u32 {
+        let IF = bus.read(0xFF0F);
+        let IE = bus.read(0xFFFF);
+        if (IF & 0x1F) & (IE & 0x1F) != 0 && self.ime == 1 {
+            if self.halt == true {
+                self.halt = false; 
+            }
+            let bit_index = IF.trailing_zeros();
+            assert!(bit_index <= 4);
+            let handler_addr: u16 = match bit_index {
+                0 => 0x40,  
+                1 => 0x48,
+                2 => 0x50,
+                3 => 0x58,
+                4 => 0x60, 
+                _ => panic!("Invalid Interrupt Index")
+            };
+            bus.write(0xFF0F ,IF & !(1 << bit_index));
+            self.ime = 0;
+            return self.CALL_interrupt(bus, handler_addr);
+        } else if (IF & 0x1F) & (IE & 0x1F) != 0 && self.halt == true {
+            self.halt = false; 
+        }
+        let mut t_states = 4; 
+        if self.halt == false {
+            let opcode = bus.read(self.pc);
+            self.pc += 1;
+            if self.halt_bug == true {
+                self.pc -= 1;
+                self.halt_bug == false; 
+            }
+            t_states = match opcode {
+                0x00 => Self::NOP(), 
+                0x01 => self.LD_r16_n16(BC, bus),
+                0x02 => self.LD_a16_r8(BC, A, bus), 
+                0x03 => self.INC_r16(BC),
+                0x04 => self.INC_r8(B),
+                0x05 => self.DEC_r8(B),
+                0x06 => self.LD_r8_n8(B, bus),
+                0x07 => self.RLCA(),
+                0x08 => self.LD_a16_SP(bus),
+                0x09 => self.ADD_HL_r16(BC),
+                0x0A => self.LD_r8_a16(A, BC, bus),
+                0x0B => self.DEC_r16(BC),
+                0x0C => self.INC_r8(C),
+                0x0D => self.DEC_r8(C),
+                0x0E => self.LD_r8_n8(C, bus),
+                0x0F => self.RRCA(),
+                0x10 => self.STOP(),
+                0x11 => self.LD_r16_n16(DE, bus),
+                0x12 => self.LD_a16_r8(DE, A, bus), 
+                0x13 => self.INC_r16(DE),
+                0x14 => self.INC_r8(D),
+                0x15 => self.DEC_r8(D),
+                0x16 => self.LD_r8_n8(D, bus),
+                0x17 => self.RLA(),
+                0x18 => self.JR_e8(bus),
+                0x19 => self.ADD_HL_r16(DE),
+                0x1A => self.LD_r8_a16(A, DE, bus),
+                0x1B => self.DEC_r16(DE),
+                0x1C => self.INC_r8(E),
+                0x1D => self.DEC_r8(E),
+                0x1E => self.LD_r8_n8(E, bus),
+                0x1F => self.RRA(),
+                0x20 => self.JR_cc_e8(Flag::Z, false, bus),
+                0x21 => self.LD_r16_n16(HL, bus), 
+                0x22 => self.LD_HLI_A(bus),
+                0x23 => self.INC_r16(HL),
+                0x24 => self.INC_r8(H),
+                0x25 => self.DEC_r8(H),
+                0x26 => self.LD_r8_n8(H, bus),
+                0x27 => self.DAA(),
+                0x28 => self.JR_cc_e8(Flag::Z, true, bus),
+                0x29 => self.ADD_HL_r16(HL),
+                0x2A => self.LD_A_HLI(bus),
+                0x2B => self.DEC_r16(HL),
+                0x2C => self.INC_r8(L),
+                0x2D => self.DEC_r8(L),
+                0x2E => self.LD_r8_n8(L, bus),
+                0x2F => self.CPL(),
+                0x30 => self.JR_cc_e8(Flag::C, false, bus),
+                0x31 => self.LD_r16_n16(SP, bus),
+                0x32 => self.LD_HLD_A(bus),
+                0x33 => self.INC_r16(SP),
+                0x34 => self.INC_HL(bus),
+                0x35 => self.DEC_HL(bus),
+                0x36 => self.LD_a16_n8(HL, bus),
+                0x37 => self.SCF(),
+                0x38 => self.JR_cc_e8(Flag::C, true, bus),
+                0x39 => self.ADD_HL_r16(SP),
+                0x3A => self.LD_A_HLD(bus),
+                0x3B => self.DEC_r16(SP),
+                0x3C => self.INC_r8(A),
+                0x3D => self.DEC_r8(A),
+                0x3E => self.LD_r8_n8(A, bus),
+                0x3F => self.CCF(),
+                0x40 => self.LD_r8_r8(B, B),
+                0x41 => self.LD_r8_r8(B, C),
+                0x42 => self.LD_r8_r8(B, D),
+                0x43 => self.LD_r8_r8(B, E),
+                0x44 => self.LD_r8_r8(B, H),
+                0x45 => self.LD_r8_r8(B, L),
+                0x46 => self.LD_r8_a16(B, HL, bus),
+                0x47 => self.LD_r8_r8(B, A),
+                0x48 => self.LD_r8_r8(C, B),
+                0x49 => self.LD_r8_r8(C, C),
+                0x4A => self.LD_r8_r8(C, D),
+                0x4B => self.LD_r8_r8(C, E),
+                0x4C => self.LD_r8_r8(C, H),
+                0x4D => self.LD_r8_r8(C, L),
+                0x4E => self.LD_r8_a16(C, HL, bus),
+                0x4F => self.LD_r8_r8(C, A),
+                0x50 => self.LD_r8_r8(D, B),
+                0x51 => self.LD_r8_r8(D, C),
+                0x52 => self.LD_r8_r8(D, D),
+                0x53 => self.LD_r8_r8(D, E),
+                0x54 => self.LD_r8_r8(D, H),
+                0x55 => self.LD_r8_r8(D, L),
+                0x56 => self.LD_r8_a16(D, HL, bus),
+                0x57 => self.LD_r8_r8(D, A),
+                0x58 => self.LD_r8_r8(E, B),
+                0x59 => self.LD_r8_r8(E, C),
+                0x5A => self.LD_r8_r8(E, D),
+                0x5B => self.LD_r8_r8(E, E),
+                0x5C => self.LD_r8_r8(E, H),
+                0x5D => self.LD_r8_r8(E, L),
+                0x5E => self.LD_r8_a16(E, HL, bus),
+                0x5F => self.LD_r8_r8(E, A),
+                0x60 => self.LD_r8_r8(H, B),
+                0x61 => self.LD_r8_r8(H, C),
+                0x62 => self.LD_r8_r8(H, D),
+                0x63 => self.LD_r8_r8(H, E),
+                0x64 => self.LD_r8_r8(H, H),
+                0x65 => self.LD_r8_r8(H, L),
+                0x66 => self.LD_r8_a16(H, HL, bus),
+                0x67 => self.LD_r8_r8(H, A),
+                0x68 => self.LD_r8_r8(L, B),
+                0x69 => self.LD_r8_r8(L, C),
+                0x6A => self.LD_r8_r8(L, D),
+                0x6B => self.LD_r8_r8(L, E),
+                0x6C => self.LD_r8_r8(L, H),
+                0x6D => self.LD_r8_r8(L, L),
+                0x6E => self.LD_r8_a16(L, HL, bus),
+                0x6F => self.LD_r8_r8(L, A),
+                0x70 => self.LD_a16_r8(HL, B, bus),
+                0x71 => self.LD_a16_r8(HL, C, bus), 
+                0x72 => self.LD_a16_r8(HL, D, bus),
+                0x73 => self.LD_a16_r8(HL, E, bus),
+                0x74 => self.LD_a16_r8(HL, H, bus),
+                0x75 => self.LD_a16_r8(HL, L, bus),
+                0x76 => self.HALT(bus),
+                0x77 => self.LD_a16_r8(HL, A, bus),
+                0x78 => self.LD_r8_r8(A, B),
+                0x79 => self.LD_r8_r8(A, C),
+                0x7A => self.LD_r8_r8(A, D),
+                0x7B => self.LD_r8_r8(A, E),
+                0x7C => self.LD_r8_r8(A, H),
+                0x7D => self.LD_r8_r8(A, L),
+                0x7E => self.LD_r8_a16(A, HL, bus),
+                0x7F => self.LD_r8_r8(A, A),
+                0x80 => self.ADD_A_r8(B),
+                0x81 => self.ADD_A_r8(C),
+                0x82 => self.ADD_A_r8(D),
+                0x83 => self.ADD_A_r8(E),
+                0x84 => self.ADD_A_r8(H),
+                0x85 => self.ADD_A_r8(L),
+                0x86 => self.ADD_A_HL(bus),
+                0x87 => self.ADD_A_r8(A),
+                0x88 => self.ADC_A_r8(B),
+                0x89 => self.ADC_A_r8(C),
+                0x8A => self.ADC_A_r8(D),
+                0x8B => self.ADC_A_r8(E),
+                0x8C => self.ADC_A_r8(H),
+                0x8D => self.ADC_A_r8(L),
+                0x8E => self.ADC_A_HL(bus),
+                0x8F => self.ADC_A_r8(A),
+                0x90 => self.SUB_A_r8(B),
+                0x91 => self.SUB_A_r8(C),
+                0x92 => self.SUB_A_r8(D),
+                0x93 => self.SUB_A_r8(E),
+                0x94 => self.SUB_A_r8(H),
+                0x95 => self.SUB_A_r8(L),
+                0x96 => self.SUB_A_HL(bus),
+                0x97 => self.SUB_A_r8(A),
+                0x98 => self.SBC_A_r8(B),
+                0x99 => self.SBC_A_r8(C),
+                0x9A => self.SBC_A_r8(D),
+                0x9B => self.SBC_A_r8(E),
+                0x9C => self.SBC_A_r8(H),
+                0x9D => self.SBC_A_r8(L),
+                0x9E => self.SBC_A_HL(bus),
+                0x9F => self.SBC_A_r8(A),
+                0xA0 => self.AND_A_r8(B),
+                0xA1 => self.AND_A_r8(C),
+                0xA2 => self.AND_A_r8(D),
+                0xA3 => self.AND_A_r8(E),
+                0xA4 => self.AND_A_r8(H),
+                0xA5 => self.AND_A_r8(L),
+                0xA6 => self.AND_A_HL(bus),
+                0xA7 => self.AND_A_r8(A),
+                0xA8 => self.XOR_A_r8(B),
+                0xA9 => self.XOR_A_r8(C),
+                0xAA => self.XOR_A_r8(D),
+                0xAB => self.XOR_A_r8(E),
+                0xAC => self.XOR_A_r8(H),
+                0xAD => self.XOR_A_r8(L),
+                0xAE => self.XOR_A_HL(bus),
+                0xAF => self.XOR_A_r8(A),
+                0xB0 => self.OR_A_r8(B),
+                0xB1 => self.OR_A_r8(C),
+                0xB2 => self.OR_A_r8(D),
+                0xB3 => self.OR_A_r8(E),
+                0xB4 => self.OR_A_r8(H),
+                0xB5 => self.OR_A_r8(L),
+                0xB6 => self.OR_A_HL(bus),
+                0xB7 => self.OR_A_r8(A),
+                0xB8 => self.CP_A_r8(B),
+                0xB9 => self.CP_A_r8(C),
+                0xBA => self.CP_A_r8(D),
+                0xBB => self.CP_A_r8(E),
+                0xBC => self.CP_A_r8(H),
+                0xBD => self.CP_A_r8(L),
+                0xBE => self.CP_A_HL(bus),
+                0xBF => self.CP_A_r8(A),
+                0xC0 => self.RET_cc(Flag::Z, false, bus),
+                0xC1 => self.POP_r16(BC, bus),
+                0xC2 => self.JP_cc(Flag::Z, false, bus),
+                0xC3 => self.JP_n16(bus),
+                0xC4 => self.CALL_cc_n16(Flag::Z, false, bus),
+                0xC5 => self.PUSH_r16(BC, bus),
+                0xC6 => self.ADD_A_n8(bus),
+                0xC7 => self.RST(0x00, bus),
+                0xC8 => self.RET_cc(Flag::Z, true, bus),
+                0xC9 => self.RET(bus),
+                0xCA => self.JP_cc(Flag::Z, true, bus),
+                0xCB => self.prefix(bus),
+                0xCC => self.CALL_cc_n16(Flag::Z, true, bus),
+                0xCD => self.CALL_n16(bus),
+                0xCE => self.ADC_A_n8(bus),
+                0xCF => self.RST(0x08, bus),
+                0xD0 => self.RET_cc(Flag::C, false, bus),
+                0xD1 => self.POP_r16(DE, bus),
+                0xD2 => self.JP_cc(Flag::C, false, bus),
+                0xD4 => self.CALL_cc_n16(Flag::C, false, bus),
+                0xD5 => self.PUSH_r16(DE, bus),
+                0xD6 => self.SUB_A_n8(bus),
+                0xD7 => self.RST(0x10, bus),
+                0xD8 => self.RET_cc(Flag::C, true, bus),
+                0xD9 => self.RETI(bus),
+                0xDA => self.JP_cc(Flag::C, true, bus),
+                0xDC => self.CALL_cc_n16(Flag::C, true, bus),
+                0xDE => self.SBC_A_n8(bus),
+                0xDF => self.RST(0x18, bus),
+                0xE0 => self.LDH_n16_A(bus),
+                0xE1 => self.POP_r16(HL, bus),
+                0xE2 => self.LDH_C_A(bus),
+                0xE5 => self.PUSH_r16(HL, bus),
+                0xE6 => self.AND_A_n8(bus),
+                0xE7 => self.RST(0x20, bus),
+                0xE8 => self.ADD_SP_e8(bus),
+                0xE9 => self.JP_HL(),
+                0xEA => self.LD_n16_A(bus),
+                0xEE => self.XOR_A_n8(bus),
+                0xEF => self.RST(0x28, bus),
+                0xF0 => self.LDH_A_n16(bus),
+                0xF1 => self.POP_AF(bus),
+                0xF2 => self.LDH_A_C(bus),
+                0xF3 => self.DI(),
+                0xF5 => self.PUSH_AF(bus),
+                0xF6 => self.OR_A_n8(bus),
+                0xF7 => self.RST(0x30, bus),
+                0xF8 => self.LD_HL_SP_e8(bus),
+                0xF9 => self.LD_SP_HL(),
+                0xFA => self.LD_A_n16(bus),
+                0xFB => self.EI(),
+                0xFE => self.CP_A_n8(bus),
+                0xFF => self.RST(0x38, bus),
+
+                _ => panic!("UNKNOWN OPCODE: {:x}", opcode),
+            };
+        }
+
+        if self.ei_check == 2 {
+            self.ime = 1; 
+            self.ei_check = 0;
+        }
+        else if self.ei_check == 1 {
+            self.ei_check = 2; 
+        }
+
+        /*\
+            Timer (I don't think this is right)
+        */
+        self.timer_state_counter = self.timer_state_counter.wrapping_add(t_states as u16); 
+        let TAC = bus.read(0xFF07);
+        if (TAC >> 2) & 1 == 1 {
+            let frequency: u16 = match TAC & 0b11 {
+                0 => 256,
+                1 => 4,
+                2 => 16,
+                3 => 64,
+                _ => panic!("2 bit value"),
+            };
+            let increment = (self.timer_state_counter / 4) / frequency;
+            if increment > 0 {
+                let (value, overflow) = bus.read(0xFF05).overflowing_add(increment as u8);
+                if overflow == true {
+                    let TMA = bus.read(0xFF06);
+                    bus.write(0xFF05, TMA);
+                    let mut IF = bus.read(0xFF0F);
+                    IF = IF | 0b100;
+                    bus.write(0xFF0F, IF);
+
+                } else {
+                    bus.write(0xFF05, value);
+                }
+                self.timer_state_counter = (self.timer_state_counter / 4) % frequency;
+            }
+        }
         self.t_states += t_states;
         return t_states;
     }
 
     fn prefix(&mut self, bus: &mut Bus) -> u32 {
         let prefix = bus.read(self.pc);
-        //println!("         PREFIX: {:<4x} NAME: {:<18}", prefix, PREFIX_NAME[prefix as usize]);
         self.pc += 1;
         let t_states = match prefix {
             0x00 => self.RLC_r8(B),
@@ -1219,6 +1300,7 @@ impl Cpu {
             0xFF => self.SET_u3_r8(7, A),
             _ => panic!("UNKNOWN PREFIX: {:x}", prefix),
         };
+
         return t_states; 
     }
 
@@ -1358,13 +1440,13 @@ impl Cpu {
     }
 
     fn LD_HL_SP_e8(&mut self, bus: &mut Bus) -> u32 {
-        let offset: i8 = self.read_n8(bus) as i8;
-        let (result, overflow) = self.sp.overflowing_add_signed(offset.into());
-        self.hl = result; 
+        let offset =  self.read_n8(bus);
+        let (result, overflow) = self.sp.overflowing_add_signed(i16::from(offset as i8));
         self.set_flag_z(0);
         self.set_flag_n(0);
-        self.set_flag_h(u16::from((self.sp & 0x0F).wrapping_add_signed(i16::from(offset & 0x0F)) > 0x0F));
-        self.set_flag_c(u16::from(overflow));
+        self.set_flag_h(u16::from((self.sp & 0xF) + (u16::from(offset) & 0xF) > 0xF));
+        self.set_flag_c(u16::from((self.sp & 0xFF) + (u16::from(offset) & 0xFF) > 0xFF));
+        self.hl = result; 
         return 12; 
     }
 
@@ -1607,33 +1689,33 @@ impl Cpu {
     fn ADD_A_r8(&mut self, reg: Register) -> u32 {
         let operand = self.get_reg(&reg);
         let (result, overflow) = self.get_a().overflowing_add(operand);
-        self.set_a(result);
         self.set_flag_z(u16::from(result == 0));
         self.set_flag_n(0);
         self.set_flag_h(u16::from((((self.get_a() & 0xF) + (operand & 0xF)) & 0x10) == 0x10));
         self.set_flag_c(u16::from(overflow));
+        self.set_a(result);
         return 4;
     }
 
     fn ADD_A_HL(&mut self, bus: &mut Bus) -> u32 {
         let operand = bus.read(self.hl);
         let (result, overflow) = self.get_a().overflowing_add(operand);
-        self.set_a(result);
         self.set_flag_z(u16::from(result == 0));
         self.set_flag_n(0);
         self.set_flag_h(u16::from((((self.get_a() & 0xF) + (operand & 0xF)) & 0x10) == 0x10));
         self.set_flag_c(u16::from(overflow));
+        self.set_a(result);
         return 8;
     }
 
     fn ADD_A_n8(&mut self, bus: &mut Bus) -> u32 {
         let operand = self.read_n8(bus);
         let (result, overflow) = self.get_a().overflowing_add(operand);
-        self.set_a(result);
         self.set_flag_z(u16::from(result == 0));
         self.set_flag_n(0);
         self.set_flag_h(u16::from((((self.get_a() & 0xF) + (operand & 0xF)) & 0x10) == 0x10));
         self.set_flag_c(u16::from(overflow));
+        self.set_a(result);
         return 8;
     }
 
@@ -1646,21 +1728,21 @@ impl Cpu {
             SP => self.sp,
         };
         let (result, overflow) = self.hl.overflowing_add(operand);
-        self.hl = result; 
         self.set_flag_n(0);
         self.set_flag_h(u16::from((self.hl & 0x0FFF) + (operand & 0x0FFF) > 0x0FFF));
         self.set_flag_c(u16::from(overflow));
+        self.hl = result; 
         return 8;
     }
 
     fn ADD_SP_e8(&mut self, bus: &mut Bus) -> u32 {
-        let offset = self.read_n8(bus) as i8;
-        let result = self.sp.wrapping_add_signed(offset.into());
-        self.sp = result; 
+        let offset = self.read_n8(bus);
+        let result = self.sp.wrapping_add_signed(i16::from(offset as i8));
         self.set_flag_z(0);
         self.set_flag_n(0);
-        self.set_flag_h(u16::from((self.sp & 0xF).wrapping_add_signed((offset as i16) & 0xF) > 0xF));
-        self.set_flag_c(u16::from((self.sp & 0xFF).wrapping_add_signed((offset as i16) & 0xFF) > 0xFF));
+        self.set_flag_h(u16::from((self.sp & 0xF) + (u16::from(offset) & 0xF) > 0xF));
+        self.set_flag_c(u16::from((self.sp & 0xFF) + (u16::from(offset) & 0xFF) > 0xFF));
+        self.sp = result; 
         return 16;
     }
 
@@ -1668,11 +1750,12 @@ impl Cpu {
         let operand = self.get_reg(&reg);
         let (intermiediate, overflow1) = self.get_a().overflowing_add(operand);
         let (result, overflow2) = intermiediate.overflowing_add(self.get_flag_c() as u8);
-        self.set_a(result);
         self.set_flag_z(u16::from(result == 0));
         self.set_flag_n(0);
-        self.set_flag_h(u16::from((((self.get_a() & 0xF) + (operand & 0xF)) & 0x10) == 0x10));
+        let c = self.get_flag_c();
+        self.set_flag_h(u16::from((self.get_a() & 0xF) + (operand & 0xF) + c as u8 > 0xF));
         self.set_flag_c(u16::from(overflow1 || overflow2));
+        self.set_a(result);
         return 4;
     }
 
@@ -1680,11 +1763,12 @@ impl Cpu {
         let operand = bus.read(self.hl);
         let (intermiediate, overflow1) = self.get_a().overflowing_add(operand);
         let (result, overflow2) = intermiediate.overflowing_add(self.get_flag_c() as u8);
-        self.set_a(result);
         self.set_flag_z(u16::from(result == 0));
         self.set_flag_n(0);
-        self.set_flag_h(u16::from((((self.get_a() & 0xF) + (operand & 0xF)) & 0x10) == 0x10));
+        let c = self.get_flag_c();
+        self.set_flag_h(u16::from((self.get_a() & 0xF) + (operand & 0xF) + c as u8 > 0xF));
         self.set_flag_c(u16::from(overflow1 || overflow2));
+        self.set_a(result);
         return 8;
     }
 
@@ -1692,44 +1776,45 @@ impl Cpu {
         let operand = self.read_n8(bus);
         let (intermiediate, overflow1) = self.get_a().overflowing_add(operand);
         let (result, overflow2) = intermiediate.overflowing_add(self.get_flag_c() as u8);
-        self.set_a(result);
         self.set_flag_z(u16::from(result == 0));
         self.set_flag_n(0);
-        self.set_flag_h(u16::from((((self.get_a() & 0xF) + (operand & 0xF)) & 0x10) == 0x10));
+        let c = self.get_flag_c();
+        self.set_flag_h(u16::from((self.get_a() & 0xF) + (operand & 0xF) + c as u8 > 0xF));
         self.set_flag_c(u16::from(overflow1 || overflow2));
+        self.set_a(result);
         return 8;
     }
 
     fn SUB_A_r8(&mut self, reg: Register) -> u32 {
         let operand = self.get_reg(&reg);
         let (result, overflow) = self.get_a().overflowing_sub(operand);
-        self.set_a(result);
         self.set_flag_z(u16::from(result == 0));
         self.set_flag_n(1);
         self.set_flag_h(u16::from((self.get_a() & 0xF) < (operand & 0xF)));
         self.set_flag_c(u16::from(overflow));
+        self.set_a(result);
         return 4;
     }
 
     fn SUB_A_HL(&mut self, bus: &mut Bus) -> u32 {
         let operand = bus.read(self.hl);
         let (result, overflow) = self.get_a().overflowing_sub(operand);
-        self.set_a(result);
         self.set_flag_z(u16::from(result == 0));
         self.set_flag_n(1);
         self.set_flag_h(u16::from((self.get_a() & 0xF) < (operand & 0xF)));
         self.set_flag_c(u16::from(overflow));
+        self.set_a(result);
         return 8;
     }
 
     fn SUB_A_n8(&mut self, bus: &mut Bus) -> u32 {
         let operand = self.read_n8(bus);
         let (result, overflow) = self.get_a().overflowing_sub(operand);
-        self.set_a(result);
         self.set_flag_z(u16::from(result == 0));
         self.set_flag_n(1);
         self.set_flag_h(u16::from((self.get_a() & 0xF) < (operand & 0xF)));
         self.set_flag_c(u16::from(overflow));
+        self.set_a(result);
         return 8;
     }
 
@@ -1737,11 +1822,12 @@ impl Cpu {
         let operand = self.get_reg(&reg);
         let (intermiediate, overflow1) = self.get_a().overflowing_sub(operand);
         let (result, overflow2) = intermiediate.overflowing_sub(self.get_flag_c() as u8);
-        self.set_a(result);
         self.set_flag_z(u16::from(result == 0));
         self.set_flag_n(1);
-        self.set_flag_h(u16::from((self.get_a() & 0xF) < (operand & 0xF)));
+        let c = self.get_flag_c();
+        self.set_flag_h(u16::from((self.get_a() & 0xF) < ((operand & 0xF) + c as u8)));
         self.set_flag_c(u16::from(overflow1 || overflow2));
+        self.set_a(result);
         return 4;
     }
 
@@ -1749,11 +1835,12 @@ impl Cpu {
         let operand = bus.read(self.hl);
         let (intermiediate, overflow1) = self.get_a().overflowing_sub(operand);
         let (result, overflow2) = intermiediate.overflowing_sub(self.get_flag_c() as u8);
-        self.set_a(result);
         self.set_flag_z(u16::from(result == 0));
         self.set_flag_n(1);
-        self.set_flag_h(u16::from((self.get_a() & 0xF) < (operand & 0xF)));
+        let c = self.get_flag_c();
+        self.set_flag_h(u16::from((self.get_a() & 0xF) < ((operand & 0xF) + c as u8)));
         self.set_flag_c(u16::from(overflow1 || overflow2));
+        self.set_a(result);
         return 8;
     }
 
@@ -1761,11 +1848,12 @@ impl Cpu {
         let operand = self.read_n8(bus);
         let (intermiediate, overflow1) = self.get_a().overflowing_sub(operand);
         let (result, overflow2) = intermiediate.overflowing_sub(self.get_flag_c() as u8);
-        self.set_a(result);
         self.set_flag_z(u16::from(result == 0));
         self.set_flag_n(1);
-        self.set_flag_h(u16::from((self.get_a() & 0xF) < (operand & 0xF)));
+        let c = self.get_flag_c();
+        self.set_flag_h(u16::from((self.get_a() & 0xF) < ((operand & 0xF) + c as u8)));
         self.set_flag_c(u16::from(overflow1 || overflow2));
+        self.set_a(result);
         return 8;
     }
 
@@ -1924,7 +2012,7 @@ impl Cpu {
     }
 
     fn RETI(&mut self, bus: &mut Bus) -> u32 {
-        self.EI();
+        self.ime = 1; 
         return self.RET(bus);
     }
 
@@ -1939,13 +2027,25 @@ impl Cpu {
         return 16;
     }
 
+    fn HALT(&mut self, bus: &mut Bus) -> u32 {
+        let IF = bus.read(0xFF0F);
+        let IE = bus.read(0xFFFF);
+        if self.ime == 0 && IF & IE != 0 {
+            self.halt_bug = true;
+        } else {
+            self.halt = true; 
+        }
+        return 0;
+    }
+
     fn EI(&mut self) -> u32 {
-        self.ime = 1;
+        self.ei_check = 1;
         return 4;
     }
 
     fn DI(&mut self) -> u32 {
         self.ime = 0;
+        self.ei_check = 0; 
         return 4;
     }
 
@@ -2087,7 +2187,7 @@ impl Cpu {
         self.set_flag_h(0);
         self.set_flag_c(u16::from(shited_bit));
         bus.write(self.hl, result);
-        return 8;
+        return 16;
     }
     
     fn RR_r8(&mut self, reg: Register) -> u32 {

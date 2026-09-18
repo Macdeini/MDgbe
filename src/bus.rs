@@ -7,11 +7,13 @@ pub struct Bus {
     pub wram2: [u8; 4096],
     pub oam: [u8; 160],
     pub hram: [u8; 127],
+    pub io_regs: [u8; 128],
+    pub ie_register: u8,
 }
 
 impl Bus {
     pub fn new(cartridge: Cartridge_MBC1) -> Self {
-        Bus { cartridge: cartridge, vram: [0; 8192], wram1: [0; 4096], wram2: [0; 4096], oam: [0; 160], hram: [0; 127] }
+        Bus { cartridge: cartridge, vram: [0; 8192], wram1: [0; 4096], wram2: [0; 4096], oam: [0; 160], hram: [0; 127], io_regs : [0; 128], ie_register: 0}
     }
 
     pub fn load_cartridge(mut self, cartridge: Cartridge_MBC1) {
@@ -34,8 +36,14 @@ impl Bus {
         if 0xFE00 <= addr && addr <= 0xFE9F {
             return self.oam[(addr - 0xFE00) as usize];
         }
+        if 0xFF00 <= addr && addr <= 0xFF7F {
+            return self.io_regs[(addr - 0xFF00) as usize];
+        }
         if 0xFF80 <= addr && addr <= 0xFFFE {
             return self.hram[(addr - 0xFF80) as usize];
+        }
+        if addr == 0xFFFF {
+            return self.ie_register;
         }
         return 0;
     }
@@ -56,8 +64,14 @@ impl Bus {
         if 0xFE00 <= addr && addr <= 0xFE9F {
             self.oam[(addr - 0xFE00) as usize] = data;
         }
+        if 0xFF00 <= addr && addr <= 0xFF7F {
+            self.io_regs[(addr - 0xFF00) as usize] = data;
+        }
         if 0xFF80 <= addr && addr <= 0xFFFE {
             self.hram[(addr - 0xFF80) as usize] = data;
+        }
+        if addr == 0xFFFF {
+            self.ie_register = data;
         }
     }
 } 
