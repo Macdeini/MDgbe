@@ -1006,19 +1006,19 @@ impl Cpu {
         }
 
         /*\
-            Timer (I don't think this is right)
+            Timer 
         */
         self.timer_state_counter = self.timer_state_counter.wrapping_add(t_states as u16); 
         let TAC = bus.read(0xFF07);
-        if (TAC >> 2) & 1 == 1 {
-            let frequency: u16 = match TAC & 0b11 {
-                0 => 256,
-                1 => 4,
-                2 => 16,
-                3 => 64,
+        let frequency: u16 = match TAC & 0b11 {
+                0 => 256*4,
+                1 => 4*4,
+                2 => 16*4,
+                3 => 64*4,
                 _ => panic!("2 bit value"),
-            };
-            let increment = (self.timer_state_counter / 4) / frequency;
+        };
+        if (TAC >> 2) & 1 == 1 {
+            let increment = self.timer_state_counter / frequency;
             if increment > 0 {
                 let (value, overflow) = bus.read(0xFF05).overflowing_add(increment as u8);
                 if overflow == true {
@@ -1026,14 +1026,14 @@ impl Cpu {
                     bus.write(0xFF05, TMA);
                     let mut IF = bus.read(0xFF0F);
                     IF = IF | 0b100;
-                    bus.write(0xFF0F, IF);
-
+                    bus.write(0xFF0F, IF + value);
                 } else {
                     bus.write(0xFF05, value);
                 }
-                self.timer_state_counter = (self.timer_state_counter / 4) % frequency;
             }
         }
+        self.timer_state_counter = self.timer_state_counter % frequency;
+
         self.t_states += t_states;
         return t_states;
     }
