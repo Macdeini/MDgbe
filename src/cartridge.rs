@@ -49,18 +49,17 @@ impl Cartridge_MBC1 {
             self.rom = Vec::with_capacity(32768 * (1 << self.rom_size));
             self.rom.resize(32768 * (1 << self.rom_size), 0);
 
-            match self.ram_size {
-                0 | 1 => self.ram = Vec::with_capacity(0),
-                2 => self.ram = Vec::with_capacity(8192),
-                3 => self.ram = Vec::with_capacity(32768),
-                4 => self.ram = Vec::with_capacity(131072),
-                5 => self.ram = Vec::with_capacity(65536),
-                _ => println!("Invalid ram size"),
-            }
-
+            self.ram = match self.ram_size {
+                0 | 1 => vec![0; 0],
+                2 => vec![0; 8192],
+                3 => vec![0; 32768],
+                4 => vec![0; 131072],
+                5 => vec![0; 65536],
+                _ => panic!("Invalid ram size"),
+            };
             // read ROM
             file.seek(SeekFrom::Start(0)).expect("Seek Failed");
-            file.read(&mut self.rom).expect("Read Failed");
+            file.read_exact(&mut self.rom).expect("Read Failed");
         } else {
             println!("Read Failed");
         }
@@ -77,23 +76,28 @@ impl Cartridge_MBC1 {
             } else {
                 let bank_addr = (addr as u32) & 0b0011111111111111;
                 let bank2 = (self.bank2 as u32) << 19;
-                 return self.rom[(bank2 | bank_addr) as usize];
+                let index = ((bank2 | bank_addr) as usize) & (self.rom.len() - 1);
+                return self.rom[index];
             }
         }
         if 0x4000 <= addr && addr <= 0x7FFF{
             let bank_addr = (addr as u32) & 0b0011111111111111;
             let bank1 = (self.bank1 as u32) << 14;
             let bank2 = (self.bank2 as u32) << 19;
-            return self.rom[(bank2 | bank1 | bank_addr) as usize];
+            let index = ((bank2 | bank1 | bank_addr) as usize) & (self.rom.len() - 1);
+            return self.rom[index];
         }
         // read from SRAM
+        if 0xA000 <= addr && addr <= 0xBFFF && self.ram_size < 2 {
+            return 0xFF; 
+        }
         if 0xA000 <= addr && addr <= 0xBFFF {
             if self.ramg == 0xA {
-                self.ramg = 0x0;
                 if self.mode == 0 {
                     return self.ram[(addr & 0b0001111111111111) as usize];
                 } else {
-                    return self.ram[(((self.bank2 as u16) << 13) | (addr & 0b0001111111111111)) as usize];
+                    let index = (((self.bank2 as usize) << 13) | ((addr as usize) & 0x1FFF)) & (self.ram.len() - 1);
+                    return self.ram[index];
                 }
             } else {
                 return 0xFF;
@@ -110,7 +114,7 @@ impl Cartridge_MBC1 {
             self.ramg = data & 0b00001111;
         }
         if 0x2000 <= addr && addr <= 0x3FFF {
-            if data == 0 {
+            if data & 0b00011111 == 0 {
                 self.bank1 = 1;
             }
             else {
@@ -128,13 +132,16 @@ impl Cartridge_MBC1 {
             self.mode = data & 0b00000001;
         }
         // write to SRAM
+        if 0xA000 <= addr && addr <= 0xBFFF && self.ram_size < 2 {
+            return; 
+        }
         if 0xA000 <= addr && addr <= 0xBFFF {
             if self.ramg == 0xA {
-                self.ramg = 0x0;
                 if self.mode == 0 {
                     self.ram[(addr & 0b0001111111111111) as usize] = data;
                 } else {
-                    self.ram[(((self.bank2 as u16) << 13) | (addr & 0b0001111111111111)) as usize] = data;
+                    let index = (((self.bank2 as usize) << 13) | ((addr as usize) & 0x1FFF)) & (self.ram.len() - 1);
+                    self.ram[index] = data;
                 }
             }
         }

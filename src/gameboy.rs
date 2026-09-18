@@ -9,16 +9,12 @@ use crate::ppu::Ppu;
 use crate::Cartridge_MBC1;
 
 use sdl2::event::Event;
+use sdl2::joystick::HatState::Right;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
 use sdl2::rect::Rect;
-
-const PALETTE: [(u8, u8, u8); 4] = [
-    (155, 188, 15),
-    (139, 172, 15),
-    (48, 98, 48),
-    (15, 56, 15),
-];
+use std::thread;
+use std::time::Duration;
 
 pub struct Gameboy {
     pub cpu: Cpu,
@@ -29,7 +25,7 @@ pub struct Gameboy {
 
 impl Gameboy {
     pub fn new() -> Self {
-        Gameboy { cpu : Cpu::new(), bus : Bus::new(Cartridge_MBC1::new()), ppu : Ppu::new(), frame : [[(0, 0, 0); 160]; 144]}
+        Gameboy { cpu : Cpu::new(), bus : Bus::new(Cartridge_MBC1::new()), ppu : Ppu::new(), frame : [[(3, 3, 3); 160]; 144]}
     }
 
     pub fn run(&mut self) ->  Result<(), String> {
@@ -54,6 +50,8 @@ impl Gameboy {
         let mut t_states: u64 = 0;
         let mut m_states: u64 = 0;
 
+        self.bus.write_joypad(0xCF); 
+
         'running: loop {
 
             while t_states < 456 * 154 {
@@ -73,10 +71,35 @@ impl Gameboy {
                         keycode: Some(Keycode::Escape),
                         ..
                     } => break 'running,
+                    Event::KeyDown { keycode: Some(Keycode::Up), .. } => {let joypad = self.bus.read(0xFF00); self.bus.write_joypad( joypad & 0b11111011);}
+                    Event::KeyDown { keycode: Some(Keycode::Down), .. } => {let joypad = self.bus.read(0xFF00); self.bus.write_joypad( joypad & 0b11110111);}
+                    Event::KeyDown { keycode: Some(Keycode::Left), .. } => {let joypad = self.bus.read(0xFF00); self.bus.write_joypad( joypad & 0b11111101);}
+                    Event::KeyDown { keycode: Some(Keycode::Right), .. } => {let joypad = self.bus.read(0xFF00); self.bus.write_joypad( joypad & 0b11111110);}
+                    // A
+                    Event::KeyDown { keycode: Some(Keycode::A), .. } => {let joypad = self.bus.read(0xFF00); self.bus.write_joypad( joypad & 0b11111110);}
+                    // B
+                    Event::KeyDown { keycode: Some(Keycode::S), .. } => {let joypad = self.bus.read(0xFF00); self.bus.write_joypad(joypad & 0b11111101);}
+                    // start 
+                    Event::KeyDown { keycode: Some(Keycode::O), .. } => {let joypad = self.bus.read(0xFF00); self.bus.write_joypad(joypad & 0b11110111);}
+                    // select
+                    Event::KeyDown { keycode: Some(Keycode::P), .. } => {let joypad = self.bus.read(0xFF00); self.bus.write_joypad( joypad & 0b11111011);}
 
+                    Event::KeyUp { keycode: Some(Keycode::Up), .. } => {let joypad = self.bus.read(0xFF00); self.bus.write_joypad( joypad | !0b11111011);}
+                    Event::KeyUp { keycode: Some(Keycode::Down), .. } => {let joypad = self.bus.read(0xFF00); self.bus.write_joypad(joypad | !0b11110111);}
+                    Event::KeyUp { keycode: Some(Keycode::Left), .. } => {let joypad = self.bus.read(0xFF00); self.bus.write_joypad( joypad | !0b11111101);}
+                    Event::KeyUp { keycode: Some(Keycode::Right), .. } => {let joypad = self.bus.read(0xFF00); self.bus.write_joypad( joypad | !0b11111110);}
+                    // A
+                    Event::KeyUp { keycode: Some(Keycode::A), .. } => {let joypad = self.bus.read(0xFF00); self.bus.write_joypad(joypad | !0b11111110);}
+                    // B
+                    Event::KeyUp { keycode: Some(Keycode::S), .. } => {let joypad = self.bus.read(0xFF00); self.bus.write_joypad( joypad | !0b11111101);}
+                    // start 
+                    Event::KeyUp { keycode: Some(Keycode::O), .. } => {let joypad = self.bus.read(0xFF00); self.bus.write_joypad( joypad | !0b11110111);}
+                    // select
+                    Event::KeyUp { keycode: Some(Keycode::P), .. } => {let joypad = self.bus.read(0xFF00); self.bus.write_joypad( joypad | !0b11111011);}
                     _ => {}
                 }
             }  
+            //println!("{:b}", self.bus.read(0xFF00));
             for (y, row) in self.frame.iter().enumerate() {
                 for (x, &val) in row.iter().enumerate() {
                     canvas.set_draw_color(Color::RGB(val.0, val.1, val.2));

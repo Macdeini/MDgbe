@@ -716,13 +716,14 @@ impl Cpu {
     }
 
     pub fn step(&mut self, bus: &mut Bus) -> u32 {
+        let mut t_states = 0; 
         let IF = bus.read(0xFF0F);
         let IE = bus.read(0xFFFF);
         if (IF & 0x1F) & (IE & 0x1F) != 0 && self.ime == 1 {
             if self.halt == true {
                 self.halt = false; 
             }
-            let bit_index = IF.trailing_zeros();
+            let bit_index = ((IF & 0x1F) & (IE & 0x1F)).trailing_zeros();
             assert!(bit_index <= 4);
             let handler_addr: u16 = match bit_index {
                 0 => 0x40,  
@@ -734,19 +735,18 @@ impl Cpu {
             };
             bus.write(0xFF0F ,IF & !(1 << bit_index));
             self.ime = 0;
-            return self.CALL_interrupt(bus, handler_addr);
+            t_states += self.CALL_interrupt(bus, handler_addr); // would have goto'd to the timer
         } else if (IF & 0x1F) & (IE & 0x1F) != 0 && self.halt == true {
             self.halt = false; 
         }
-        let mut t_states = 4; 
         if self.halt == false {
             let opcode = bus.read(self.pc);
-            self.pc += 1;
+            self.pc = self.pc.wrapping_add(1);
             if self.halt_bug == true {
                 self.pc -= 1;
-                self.halt_bug == false; 
+                self.halt_bug = false; 
             }
-            t_states = match opcode {
+            t_states += match opcode {
                 0x00 => Self::NOP(), 
                 0x01 => self.LD_r16_n16(BC, bus),
                 0x02 => self.LD_a16_r8(BC, A, bus), 
@@ -995,6 +995,8 @@ impl Cpu {
 
                 _ => panic!("UNKNOWN OPCODE: {:x}", opcode),
             };
+        } else {
+            t_states += 4; 
         }
 
         if self.ei_check == 2 {
@@ -1023,10 +1025,10 @@ impl Cpu {
                 let (value, overflow) = bus.read(0xFF05).overflowing_add(increment as u8);
                 if overflow == true {
                     let TMA = bus.read(0xFF06);
-                    bus.write(0xFF05, TMA);
+                    bus.write(0xFF05, TMA + value);
                     let mut IF = bus.read(0xFF0F);
                     IF = IF | 0b100;
-                    bus.write(0xFF0F, IF + value);
+                    bus.write(0xFF0F, IF);
                 } else {
                     bus.write(0xFF05, value);
                 }
@@ -2030,12 +2032,12 @@ impl Cpu {
     fn HALT(&mut self, bus: &mut Bus) -> u32 {
         let IF = bus.read(0xFF0F);
         let IE = bus.read(0xFFFF);
-        if self.ime == 0 && IF & IE != 0 {
+        if self.ime == 0 && (IF & 0x1F) & (IE & 0x1F) != 0 {
             self.halt_bug = true;
         } else {
             self.halt = true; 
         }
-        return 0;
+        return 4;
     }
 
     fn EI(&mut self) -> u32 {

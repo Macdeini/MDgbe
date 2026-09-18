@@ -20,6 +20,10 @@ impl Bus {
         self.cartridge = cartridge;
     }
 
+    pub fn write_joypad(&mut self, data: u8) {
+        self.io_regs[0] = data;
+    }
+
     pub fn read(&mut self, addr: u16) -> u8 {
         if 0x0000 <= addr && addr <= 0x7FFF || 0xA000 <= addr && addr <= 0xBFFF {
             return self.cartridge.read(addr);
@@ -37,6 +41,10 @@ impl Bus {
             return self.oam[(addr - 0xFE00) as usize];
         }
         if 0xFF00 <= addr && addr <= 0xFF7F {
+            if addr == 0xFF0F {
+                let IF = self.io_regs[(addr - 0xFF00) as usize];
+                return IF | 0b11100000;
+            }
             return self.io_regs[(addr - 0xFF00) as usize];
         }
         if 0xFF80 <= addr && addr <= 0xFFFE {
@@ -65,6 +73,12 @@ impl Bus {
             self.oam[(addr - 0xFE00) as usize] = data;
         }
         if 0xFF00 <= addr && addr <= 0xFF7F {
+            // joypad input
+            if addr == 0xFF00  {
+                let joypad = self.io_regs[(addr - 0xFF00) as usize];
+                self.io_regs[(addr - 0xFF00) as usize] = (joypad & 0xCF) | (data & 0x30);
+                return;                     
+            }
             self.io_regs[(addr - 0xFF00) as usize] = data;
         }
         if 0xFF80 <= addr && addr <= 0xFFFE {
