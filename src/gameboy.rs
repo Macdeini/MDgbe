@@ -50,7 +50,7 @@ impl Gameboy {
         let mut t_states: u64 = 0;
         let mut m_states: u64 = 0;
 
-        self.bus.write_joypad(0xCF); 
+        self.bus.io_regs[0] = 0xCF; 
 
         'running: loop {
 
@@ -71,35 +71,34 @@ impl Gameboy {
                         keycode: Some(Keycode::Escape),
                         ..
                     } => break 'running,
-                    Event::KeyDown { keycode: Some(Keycode::Up), .. } => {let joypad = self.bus.read(0xFF00); self.bus.write_joypad( joypad & 0b11111011);}
-                    Event::KeyDown { keycode: Some(Keycode::Down), .. } => {let joypad = self.bus.read(0xFF00); self.bus.write_joypad( joypad & 0b11110111);}
-                    Event::KeyDown { keycode: Some(Keycode::Left), .. } => {let joypad = self.bus.read(0xFF00); self.bus.write_joypad( joypad & 0b11111101);}
-                    Event::KeyDown { keycode: Some(Keycode::Right), .. } => {let joypad = self.bus.read(0xFF00); self.bus.write_joypad( joypad & 0b11111110);}
+                    Event::KeyDown { keycode: Some(Keycode::Up), .. } => {self.bus.up = true;}
+                    Event::KeyDown { keycode: Some(Keycode::Down), .. } => {self.bus.down = true;}
+                    Event::KeyDown { keycode: Some(Keycode::Left), .. } => {self.bus.left = true;}
+                    Event::KeyDown { keycode: Some(Keycode::Right), .. } => {self.bus.right = true;}
                     // A
-                    Event::KeyDown { keycode: Some(Keycode::A), .. } => {let joypad = self.bus.read(0xFF00); self.bus.write_joypad( joypad & 0b11111110);}
+                    Event::KeyDown { keycode: Some(Keycode::A), .. } => {self.bus.a = true;}
                     // B
-                    Event::KeyDown { keycode: Some(Keycode::S), .. } => {let joypad = self.bus.read(0xFF00); self.bus.write_joypad(joypad & 0b11111101);}
+                    Event::KeyDown { keycode: Some(Keycode::S), .. } => {self.bus.b = true;}
                     // start 
-                    Event::KeyDown { keycode: Some(Keycode::O), .. } => {let joypad = self.bus.read(0xFF00); self.bus.write_joypad(joypad & 0b11110111);}
+                    Event::KeyDown { keycode: Some(Keycode::O), .. } => {self.bus.start = true;}
                     // select
-                    Event::KeyDown { keycode: Some(Keycode::P), .. } => {let joypad = self.bus.read(0xFF00); self.bus.write_joypad( joypad & 0b11111011);}
+                    Event::KeyDown { keycode: Some(Keycode::P), .. } => {self.bus.select = true;}
 
-                    Event::KeyUp { keycode: Some(Keycode::Up), .. } => {let joypad = self.bus.read(0xFF00); self.bus.write_joypad( joypad | !0b11111011);}
-                    Event::KeyUp { keycode: Some(Keycode::Down), .. } => {let joypad = self.bus.read(0xFF00); self.bus.write_joypad(joypad | !0b11110111);}
-                    Event::KeyUp { keycode: Some(Keycode::Left), .. } => {let joypad = self.bus.read(0xFF00); self.bus.write_joypad( joypad | !0b11111101);}
-                    Event::KeyUp { keycode: Some(Keycode::Right), .. } => {let joypad = self.bus.read(0xFF00); self.bus.write_joypad( joypad | !0b11111110);}
+                    Event::KeyUp { keycode: Some(Keycode::Up), .. } => {self.bus.up = false;}
+                    Event::KeyUp { keycode: Some(Keycode::Down), .. } => {self.bus.down = false;}
+                    Event::KeyUp { keycode: Some(Keycode::Left), .. } => {self.bus.left = false;}
+                    Event::KeyUp { keycode: Some(Keycode::Right), .. } => {self.bus.right = false;}
                     // A
-                    Event::KeyUp { keycode: Some(Keycode::A), .. } => {let joypad = self.bus.read(0xFF00); self.bus.write_joypad(joypad | !0b11111110);}
+                    Event::KeyUp { keycode: Some(Keycode::A), .. } => {self.bus.a = false;}
                     // B
-                    Event::KeyUp { keycode: Some(Keycode::S), .. } => {let joypad = self.bus.read(0xFF00); self.bus.write_joypad( joypad | !0b11111101);}
+                    Event::KeyUp { keycode: Some(Keycode::S), .. } => {self.bus.b = false;}
                     // start 
-                    Event::KeyUp { keycode: Some(Keycode::O), .. } => {let joypad = self.bus.read(0xFF00); self.bus.write_joypad( joypad | !0b11110111);}
+                    Event::KeyUp { keycode: Some(Keycode::O), .. } => {self.bus.start = false;}
                     // select
-                    Event::KeyUp { keycode: Some(Keycode::P), .. } => {let joypad = self.bus.read(0xFF00); self.bus.write_joypad( joypad | !0b11111011);}
+                    Event::KeyUp { keycode: Some(Keycode::P), .. } => {self.bus.select = false;}
                     _ => {}
                 }
             }  
-            //println!("{:b}", self.bus.read(0xFF00));
             for (y, row) in self.frame.iter().enumerate() {
                 for (x, &val) in row.iter().enumerate() {
                     canvas.set_draw_color(Color::RGB(val.0, val.1, val.2));

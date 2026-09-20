@@ -9,19 +9,25 @@ pub struct Bus {
     pub hram: [u8; 127],
     pub io_regs: [u8; 128],
     pub ie_register: u8,
+    pub up: bool, 
+    pub down: bool, 
+    pub left: bool, 
+    pub right: bool, 
+    pub a: bool, 
+    pub b: bool, 
+    pub start: bool, 
+    pub select: bool, 
 }
 
 impl Bus {
     pub fn new(cartridge: Cartridge_MBC1) -> Self {
-        Bus { cartridge: cartridge, vram: [0; 8192], wram1: [0; 4096], wram2: [0; 4096], oam: [0; 160], hram: [0; 127], io_regs : [0; 128], ie_register: 0}
+        Bus { cartridge: cartridge, vram: [0; 8192], wram1: [0; 4096], wram2: [0; 4096], 
+            oam: [0; 160], hram: [0; 127], io_regs : [0; 128], ie_register: 0,
+        up: false, down: false, left: false, right: false, a: false, b: false, start: false, select: false}
     }
 
     pub fn load_cartridge(mut self, cartridge: Cartridge_MBC1) {
         self.cartridge = cartridge;
-    }
-
-    pub fn write_joypad(&mut self, data: u8) {
-        self.io_regs[0] = data;
     }
 
     pub fn read(&mut self, addr: u16) -> u8 {
@@ -41,9 +47,40 @@ impl Bus {
             return self.oam[(addr - 0xFE00) as usize];
         }
         if 0xFF00 <= addr && addr <= 0xFF7F {
+            // interrupt flag
             if addr == 0xFF0F {
                 let IF = self.io_regs[(addr - 0xFF00) as usize];
                 return IF | 0b11100000;
+            }
+            // joypad input
+            if addr == 0xFF00  {
+                let joypad = self.io_regs[(addr - 0xFF00) as usize];
+                let d_pad = (joypad >> 4) & 1; 
+                let buttons = (joypad >> 5) & 1;
+                let mut bit0 = true;
+                let mut bit1 = true;
+                let mut bit2 = true;
+                let mut bit3 = true;
+                if d_pad == 1 && buttons == 1 {
+                    bit0 = !(self.a | self.right);
+                    bit1 = !(self.b | self.left);
+                    bit2 = !(self.select | self.up);
+                    bit3 = !(self.start | self.down);
+                } else if d_pad == 1 && buttons == 0 {
+                    bit0 = !(self.a);
+                    bit1 = !(self.b);
+                    bit2 = !(self.select);
+                    bit3 = !(self.start);
+                } else if d_pad == 0 && buttons == 1 {
+                    bit0 = !(self.right);
+                    bit1 = !(self.left);
+                    bit2 = !(self.up);
+                    bit3 = !(self.down);
+                }
+                let high = joypad & 0xF0;
+                let low = (u8::from(bit3) << 3) | (u8::from(bit2) << 2) | (u8::from(bit1) << 1) | u8::from(bit0);
+                return high | low; 
+
             }
             return self.io_regs[(addr - 0xFF00) as usize];
         }
@@ -78,6 +115,15 @@ impl Bus {
                 let joypad = self.io_regs[(addr - 0xFF00) as usize];
                 self.io_regs[(addr - 0xFF00) as usize] = (joypad & 0xCF) | (data & 0x30);
                 return;                     
+            }
+            // OAM transfer
+            if addr == 0xFF46 {
+                assert!(data <= 0xDF);
+                let oam_transfer_addr = u16::from(data) << 8;
+                for addr in 0x0u16..0xA0u16 {
+                    let oam_data = self.read(oam_transfer_addr + addr);
+                    self.write(0xFE00 + addr, oam_data);
+                }
             }
             self.io_regs[(addr - 0xFF00) as usize] = data;
         }
