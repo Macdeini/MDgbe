@@ -1,4 +1,6 @@
 use crate::cartridge::{self, Cartridge_MBC1};
+use std::collections::VecDeque;
+
 
 pub struct Bus {
     pub cartridge: Cartridge_MBC1,
@@ -17,13 +19,20 @@ pub struct Bus {
     pub b: bool, 
     pub start: bool, 
     pub select: bool, 
+    pub channel2_triggers: VecDeque<bool>, 
+    pub channel2_timer_triggers: VecDeque<bool>, 
+    pub channel2_timer_values: VecDeque<u8>,
 }
 
 impl Bus {
     pub fn new(cartridge: Cartridge_MBC1) -> Self {
         Bus { cartridge: cartridge, vram: [0; 8192], wram1: [0; 4096], wram2: [0; 4096], 
             oam: [0; 160], hram: [0; 127], io_regs : [0; 128], ie_register: 0,
-        up: false, down: false, left: false, right: false, a: false, b: false, start: false, select: false}
+        up: false, down: false, left: false, right: false, a: false, b: false, start: false, select: false,
+        channel2_triggers: VecDeque::new(),
+        channel2_timer_triggers: VecDeque::new(),
+        channel2_timer_values: VecDeque::new(),
+        }
     }
 
     pub fn load_cartridge(mut self, cartridge: Cartridge_MBC1) {
@@ -115,6 +124,20 @@ impl Bus {
                 let joypad = self.io_regs[(addr - 0xFF00) as usize];
                 self.io_regs[(addr - 0xFF00) as usize] = (joypad & 0xCF) | (data & 0x30);
                 return;                     
+            }
+            if addr == 0xFF16 {
+                self.channel2_timer_values.push_back(data & 0x3F);
+            }
+            // channel 2 triggers
+            if addr == 0xFF19 {
+                if data >> 7 == 1 {
+                    self.channel2_triggers.push_back(true);
+                } 
+                match (data >> 6) & 1 {
+                    0 => self.channel2_timer_triggers.push_back(false),
+                    1 => self.channel2_timer_triggers.push_back(true),
+                    _ => panic!("1 bit value"),
+                }
             }
             // OAM transfer
             if addr == 0xFF46 {

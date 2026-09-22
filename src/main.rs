@@ -3,11 +3,9 @@ mod cpu;
 mod cartridge;
 mod bus; 
 mod ppu;
+mod apu; 
 
-use cpu::Cpu;
 use gameboy::Gameboy;
-use bus::Bus;
-use ppu::Ppu;
 use cartridge::Cartridge_MBC1;
 
 fn main() {

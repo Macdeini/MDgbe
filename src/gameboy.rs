@@ -7,31 +7,42 @@ use crate::cpu::Cpu;
 use crate::bus::Bus;
 use crate::ppu::Ppu;
 use crate::Cartridge_MBC1;
+use crate::apu::Apu;
 
 use sdl2::event::Event;
-use sdl2::joystick::HatState::Right;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
 use sdl2::rect::Rect;
-use std::thread;
-use std::time::Duration;
+use sdl2::audio::{AudioCallback, AudioDevice, AudioQueue, AudioSpecDesired};
 
 pub struct Gameboy {
     pub cpu: Cpu,
     pub bus: Bus,
     pub ppu: Ppu,
+    pub apu: Apu, 
     frame: [[(u8, u8, u8); 160]; 144],
+    t_states: u64,
 }
 
 impl Gameboy {
     pub fn new() -> Self {
-        Gameboy { cpu : Cpu::new(), bus : Bus::new(Cartridge_MBC1::new()), ppu : Ppu::new(), frame : [[(3, 3, 3); 160]; 144]}
+        let mut gb = Gameboy { 
+            cpu : Cpu::new(), 
+            bus : Bus::new(Cartridge_MBC1::new()), 
+            ppu : Ppu::new(), 
+            apu : Apu::new(),
+            frame : [[(3, 3, 3); 160]; 144],
+            t_states : 0,
+        };
+        gb.bus.io_regs[0] = 0xCF; 
+        return gb; 
     }
 
     pub fn run(&mut self) ->  Result<(), String> {
 
         let sdl = sdl2::init()?;
         let video = sdl.video()?;
+        let audio = sdl.audio()?;
 
         let window = video
             .window("MDgbe", 160*4, 144*4)
@@ -45,24 +56,26 @@ impl Gameboy {
             .build()
             .map_err(|e| e.to_string())?;
 
+        let desired_spec = AudioSpecDesired {
+            freq: Some(44100),
+            channels: Some(1), // Mono
+            samples: Some(512),
+        };
+
+        let device: AudioQueue<f32> = audio.open_queue(None, &desired_spec)?;
+        let mut audio_queue: Vec<f32> = Vec::new();
+
         let mut events = sdl.event_pump()?;
-
-        let mut t_states: u64 = 0;
-        let mut m_states: u64 = 0;
-
-        self.bus.io_regs[0] = 0xCF; 
-
         'running: loop {
-
-            while t_states < 456 * 154 {
+            while self.t_states < 456 * 154 {
                 let new_t_states = self.cpu.step(&mut self.bus);
                 for _ in 0..new_t_states {
                     self.ppu.buffer(&mut self.frame, &mut self.bus);
+                    self.apu.buffer(&mut audio_queue, &mut self.bus);
                 }
-                t_states += u64::from(new_t_states);
-                m_states += u64::from(new_t_states / 4);
+                self.t_states += u64::from(new_t_states);
             }
-            t_states -= 456 * 154;
+            self.t_states -= 456 * 154;
 
             for event in events.poll_iter() {
                 match event {
@@ -75,26 +88,17 @@ impl Gameboy {
                     Event::KeyDown { keycode: Some(Keycode::Down), .. } => {self.bus.down = true;}
                     Event::KeyDown { keycode: Some(Keycode::Left), .. } => {self.bus.left = true;}
                     Event::KeyDown { keycode: Some(Keycode::Right), .. } => {self.bus.right = true;}
-                    // A
                     Event::KeyDown { keycode: Some(Keycode::A), .. } => {self.bus.a = true;}
-                    // B
                     Event::KeyDown { keycode: Some(Keycode::S), .. } => {self.bus.b = true;}
-                    // start 
                     Event::KeyDown { keycode: Some(Keycode::O), .. } => {self.bus.start = true;}
-                    // select
                     Event::KeyDown { keycode: Some(Keycode::P), .. } => {self.bus.select = true;}
-
                     Event::KeyUp { keycode: Some(Keycode::Up), .. } => {self.bus.up = false;}
                     Event::KeyUp { keycode: Some(Keycode::Down), .. } => {self.bus.down = false;}
                     Event::KeyUp { keycode: Some(Keycode::Left), .. } => {self.bus.left = false;}
                     Event::KeyUp { keycode: Some(Keycode::Right), .. } => {self.bus.right = false;}
-                    // A
                     Event::KeyUp { keycode: Some(Keycode::A), .. } => {self.bus.a = false;}
-                    // B
                     Event::KeyUp { keycode: Some(Keycode::S), .. } => {self.bus.b = false;}
-                    // start 
                     Event::KeyUp { keycode: Some(Keycode::O), .. } => {self.bus.start = false;}
-                    // select
                     Event::KeyUp { keycode: Some(Keycode::P), .. } => {self.bus.select = false;}
                     _ => {}
                 }
@@ -105,6 +109,9 @@ impl Gameboy {
                     canvas.fill_rect(Rect::new((x * 4) as i32, (y * 4) as i32, 4, 4))?;
                 }   
             }
+            device.queue_audio(&audio_queue);
+            audio_queue.clear();
+            device.resume();
             canvas.present();
         }
         Ok(())
