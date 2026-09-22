@@ -19,6 +19,9 @@ pub struct Bus {
     pub b: bool, 
     pub start: bool, 
     pub select: bool, 
+    pub channel1_triggers: VecDeque<bool>, 
+    pub channel1_timer_triggers: VecDeque<bool>, 
+    pub channel1_timer_values: VecDeque<u8>,
     pub channel2_triggers: VecDeque<bool>, 
     pub channel2_timer_triggers: VecDeque<bool>, 
     pub channel2_timer_values: VecDeque<u8>,
@@ -29,6 +32,9 @@ impl Bus {
         Bus { cartridge: cartridge, vram: [0; 8192], wram1: [0; 4096], wram2: [0; 4096], 
             oam: [0; 160], hram: [0; 127], io_regs : [0; 128], ie_register: 0,
         up: false, down: false, left: false, right: false, a: false, b: false, start: false, select: false,
+        channel1_triggers: VecDeque::new(),
+        channel1_timer_triggers: VecDeque::new(),
+        channel1_timer_values: VecDeque::new(),
         channel2_triggers: VecDeque::new(),
         channel2_timer_triggers: VecDeque::new(),
         channel2_timer_values: VecDeque::new(),
@@ -125,6 +131,22 @@ impl Bus {
                 self.io_regs[(addr - 0xFF00) as usize] = (joypad & 0xCF) | (data & 0x30);
                 return;                     
             }
+            // channel 1 timer write
+            if addr == 0xFF11 {
+                self.channel1_timer_values.push_back(data & 0x3F);
+            }
+            // channel 1 triggers
+            if addr == 0xFF14 {
+                if data >> 7 == 1 {
+                    self.channel1_triggers.push_back(true);
+                } 
+                match (data >> 6) & 1 {
+                    0 => self.channel1_timer_triggers.push_back(false),
+                    1 => self.channel1_timer_triggers.push_back(true),
+                    _ => panic!("1 bit value"),
+                }
+            }
+            // channel 2 timer write
             if addr == 0xFF16 {
                 self.channel2_timer_values.push_back(data & 0x3F);
             }
