@@ -128,48 +128,6 @@ impl Apu {
             frame_sequencer: 0, 
         };
     }
-
-    fn clock_channel1_sweep(&mut self, bus: &mut Bus) {
-        if self.channel1.period_sweep_pace == 0 {
-            return;
-        }
-        self.channel1.period_sweep_pace -= 1;
-        if self.channel1.period_sweep_pace != 0 {
-            return;
-        }
-        let NR10 = bus.io_regs[0x10];
-        let pace = (NR10 >> 4) & 0x07;
-        let step = NR10 & 0x07;
-        self.channel1.period_sweep_pace = if pace == 0 { 8 } else { pace };
-        if !self.channel1.period_sweep_enable || pace == 0 {
-            return;
-        }
-        let calculate = |period: u16| {
-            let change = period >> step;
-            if NR10 & 0x08 == 0 {
-                period + change
-            } else {
-                period - change
-            }
-        };
-        let candidate = calculate(self.channel1.shadow_period);
-        if candidate > 0x7FF {
-            self.channel1.channel_enable = false;
-            bus.io_regs[0x26] &= !0x01;
-            return;
-        }
-        if step == 0 {
-            return;
-        }
-        self.channel1.shadow_period = candidate;
-        bus.io_regs[0x13] = (candidate & 0xFF) as u8;
-        bus.io_regs[0x14] =
-            (bus.io_regs[0x14] & 0xF8) | ((candidate >> 8) as u8 & 0x07);
-        if calculate(candidate) > 0x7FF {
-            self.channel1.channel_enable = false;
-            bus.io_regs[0x26] &= !0x01;
-        }
-    }
     
     pub fn buffer(&mut self, queue: &mut Vec<f32>, bus: &mut Bus) {
         //let NR52 = bus.read(0xFF26);
@@ -409,7 +367,45 @@ impl Apu {
 
         if self.dots % 8192 == 0 && self.dots > 0 {
             if self.frame_sequencer == 2 || self.frame_sequencer == 6 {
-                self.clock_channel1_sweep(bus);
+                if self.channel1.period_sweep_pace != 0 {
+                    self.channel1.period_sweep_pace -= 1;
+                    if self.channel1.period_sweep_pace == 0 {
+                        let pace = (NR10 >> 4) & 0x07;
+                        let step = NR10 & 0x07;
+                        self.channel1.period_sweep_pace = if pace == 0 { 
+                            8 
+                        } else { 
+                            pace 
+                        };
+                        if self.channel1.period_sweep_enable && pace != 0 {
+                            let calculate = |period: u16| {
+                                let change = period >> step;
+                                if NR10 & 0x08 == 0 {
+                                    period + change
+                                } else {
+                                    period - change
+                                }
+                            };
+                            let candidate = calculate(self.channel1.shadow_period);
+                            if candidate > 0x7FF {
+                                self.channel1.channel_enable = false;
+                                let curr_NR52 = bus.read(0xFF26);
+                                bus.write(0xFF26, curr_NR52 & !(1));
+                            } else {
+                                if step != 0 {
+                                    self.channel1.shadow_period = candidate;
+                                    bus.write(0xFF13, (candidate & 0xFF) as u8);
+                                    bus.io_regs[0x14] = (bus.io_regs[0x14] & 0xF8) | ((candidate >> 8) as u8 & 0x07);
+                                    if calculate(candidate) > 0x7FF {
+                                        self.channel1.channel_enable = false;
+                                        let curr_NR52 = bus.read(0xFF26);
+                                        bus.write(0xFF26, curr_NR52 & !(1));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
             if self.channel1.timer_enable == true && self.dots % 8192 == 0 && (self.dots / 8192) % 2 != 0 {
                 if self.channel1.timer < 64 {
