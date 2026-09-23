@@ -25,6 +25,12 @@ pub struct Bus {
     pub channel2_triggers: VecDeque<bool>, 
     pub channel2_timer_triggers: VecDeque<bool>, 
     pub channel2_timer_values: VecDeque<u8>,
+    pub channel3_triggers: VecDeque<bool>, 
+    pub channel3_timer_triggers: VecDeque<bool>, 
+    pub channel3_timer_values: VecDeque<u8>,
+    pub channel4_triggers: VecDeque<bool>, 
+    pub channel4_timer_triggers: VecDeque<bool>, 
+    pub channel4_timer_values: VecDeque<u8>,
 }
 
 impl Bus {
@@ -38,6 +44,12 @@ impl Bus {
         channel2_triggers: VecDeque::new(),
         channel2_timer_triggers: VecDeque::new(),
         channel2_timer_values: VecDeque::new(),
+        channel3_triggers: VecDeque::new(),
+        channel3_timer_triggers: VecDeque::new(),
+        channel3_timer_values: VecDeque::new(),
+        channel4_triggers: VecDeque::new(),
+        channel4_timer_triggers: VecDeque::new(),
+        channel4_timer_values: VecDeque::new(),
         }
     }
 
@@ -158,6 +170,36 @@ impl Bus {
                 match (data >> 6) & 1 {
                     0 => self.channel2_timer_triggers.push_back(false),
                     1 => self.channel2_timer_triggers.push_back(true),
+                    _ => panic!("1 bit value"),
+                }
+            }
+            // channel 3 timer write
+            if addr == 0xFF1B {
+                self.channel3_timer_values.push_back(data);
+            }
+            // channel 3 triggers
+            if addr == 0xFF1E {
+                if data >> 7 == 1 {
+                    self.channel3_triggers.push_back(true);
+                } 
+                match (data >> 6) & 1 {
+                    0 => self.channel3_timer_triggers.push_back(false),
+                    1 => self.channel3_timer_triggers.push_back(true),
+                    _ => panic!("1 bit value"),
+                }
+            }
+            // channel 4 timer write
+            if addr == 0xFF20 {
+                self.channel4_timer_values.push_back(data & 0x3F);
+            }
+            // channel 4 triggers
+            if addr == 0xFF23 {
+                if data >> 7 == 1 {
+                    self.channel4_triggers.push_back(true);
+                } 
+                match (data >> 6) & 1 {
+                    0 => self.channel4_timer_triggers.push_back(false),
+                    1 => self.channel4_timer_triggers.push_back(true),
                     _ => panic!("1 bit value"),
                 }
             }
